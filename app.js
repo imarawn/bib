@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const emailInput = document.getElementById('auth-email');
   const passwordInput = document.getElementById('auth-password');
   const authPanel = document.querySelector('.panel--auth');
+  const viewNav = document.getElementById('view-nav');
+  const viewButtons = viewNav ? Array.from(viewNav.querySelectorAll('[data-view]')) : [];
   const logoutBtn = document.getElementById('logout-btn');
   const sessionStatus = document.getElementById('session-status');
   const bookPanel = document.getElementById('book-panel');
@@ -27,6 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const coverInput = document.getElementById('cover');
   const bookSubmitBtn = document.getElementById('book-submit');
   const bookList = document.getElementById('book-list');
+  const ambient = document.getElementById('ambient-light');
+  const lightToggle = document.getElementById('light-toggle');
+  const LIGHT_PREF_KEY = 'ambient-light';
+  const modal = document.getElementById('book-modal');
+  const modalInner = document.getElementById('modal-inner');
+  const modalCloseBtn = modal ? modal.querySelector('.modal__close') : null;
+  const modalBackdrop = modal ? modal.querySelector('.modal__backdrop') : null;
 
   if (!window.supabase) {
     showToast('Supabase SDK nicht geladen.');
@@ -39,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let editingId = null;
   let books = [];
   let toastTimer = null;
+  let currentView = 'list';
+  let modalHideTimer = null;
+  let isLightOn = false;
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -47,7 +59,25 @@ document.addEventListener('DOMContentLoaded', () => {
   filterStatus.addEventListener('change', () => {
     loadBooks();
   });
+  viewButtons.forEach((btn) => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+  if (lightToggle) {
+    lightToggle.addEventListener('click', toggleAmbientLight);
+  }
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', closeModal);
+  }
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', closeModal);
+  }
+  document.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Escape') {
+      closeModal();
+    }
+  });
 
+  initLightPreference();
   initAuth();
 
   async function initAuth() {
@@ -95,21 +125,31 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function onAuthChanged(isAuthed) {
-    sessionStatus.textContent = isAuthed && currentUser
-      ? 'Angemeldet als ' + (currentUser.email || 'User')
-      : 'Abgemeldet';
+    sessionStatus.textContent = isAuthed ? 'Angemeldet' : 'Abgemeldet';
     logoutBtn.hidden = !isAuthed;
-    bookPanel.hidden = !isAuthed;
-    listPanel.hidden = !isAuthed;
     authPanel.hidden = isAuthed;
+    if (viewNav) {
+      viewNav.hidden = !isAuthed;
+      viewNav.classList.toggle('is-hidden', !isAuthed);
+    }
+    if (viewButtons.length) {
+      viewButtons.forEach((btn) => {
+        btn.disabled = !isAuthed;
+      });
+    }
 
     if (isAuthed) {
+      switchView(currentView || 'list');
       loadBooks();
     } else {
       editingId = null;
       books = [];
-      bookList.innerHTML = '<p class="muted">Noch keine Bücher. Lege los!</p>';
       bookForm.reset();
+      bookPanel.hidden = true;
+      listPanel.hidden = true;
+      if (bookList) {
+        bookList.innerHTML = '<p class="muted">Noch keine Bücher. Lege los!</p>';
+      }
     }
   }
 
@@ -175,6 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     resetBookForm();
+    switchView('list');
     loadBooks();
   }
 
@@ -220,79 +261,63 @@ document.addEventListener('DOMContentLoaded', () => {
     items.forEach((book) => {
       const card = document.createElement('article');
       card.className = 'book-card';
+      card.tabIndex = 0;
 
+      const inner = document.createElement('div');
+      inner.className = 'book-card__inner';
+
+      const coverBox = document.createElement('div');
+      coverBox.className = 'book-card__cover';
       if (book.cover_url) {
         const img = document.createElement('img');
         img.src = book.cover_url;
         img.alt = 'Cover von ' + book.title;
         img.className = 'cover';
-        card.appendChild(img);
+        coverBox.appendChild(img);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'cover cover--placeholder';
+        placeholder.textContent = book.title ? book.title.charAt(0).toUpperCase() : 'B';
+        coverBox.appendChild(placeholder);
       }
 
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'badge';
-      statusBadge.textContent = statusLabel(book.status);
-      card.appendChild(statusBadge);
-
-      const titleEl = document.createElement('h3');
-      titleEl.className = 'book-card__title';
-      titleEl.textContent = book.title;
-      card.appendChild(titleEl);
-
-      const meta = document.createElement('div');
-      meta.className = 'book-card__meta';
-      meta.innerHTML = `
-        <span>von ${book.author}</span>
-        ${book.rating ? `<span>★ ${book.rating}</span>` : ''}
-        ${book.created_at ? `<span>${new Date(book.created_at).toLocaleDateString('de-DE')}</span>` : ''}
+      const body = document.createElement('div');
+      body.className = 'book-card__body';
+      body.innerHTML = `
+        <div class="book-card__top">
+          <span class="badge badge--overlay">${statusLabel(book.status)}</span>
+        </div>
       `;
-      card.appendChild(meta);
 
-      if (book.tags) {
-        const tagWrap = document.createElement('div');
-        tagWrap.className = 'tag-list';
-        book.tags
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-          .forEach((tag) => {
-            const tagEl = document.createElement('span');
-            tagEl.className = 'tag';
-            tagEl.textContent = tag;
-            tagWrap.appendChild(tagEl);
-          });
-        card.appendChild(tagWrap);
-      }
+      inner.appendChild(coverBox);
+      inner.appendChild(body);
+      card.appendChild(inner);
 
-      if (book.review) {
-        const review = document.createElement('p');
-        review.className = 'book-card__review';
-        review.textContent = book.review;
-        card.appendChild(review);
-      }
-
-      const actions = document.createElement('div');
-      actions.className = 'card-actions';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'ghost-btn ghost-btn--small';
-      editBtn.textContent = 'Bearbeiten';
-      editBtn.addEventListener('click', function () {
-        startEdit(book);
+      card.addEventListener('click', () => {
+        openModal(book);
       });
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'ghost-btn ghost-btn--small';
-      deleteBtn.textContent = 'Löschen';
-      deleteBtn.addEventListener('click', function () {
-        deleteBook(book.id);
+      card.addEventListener('keypress', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          evt.preventDefault();
+          openModal(book);
+        }
       });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(deleteBtn);
-      card.appendChild(actions);
 
       bookList.appendChild(card);
     });
+  }
+
+  function renderTags(raw) {
+    const tags = raw
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (!tags.length) return '';
+    return `
+      <div class="tag-list">
+        ${tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
+      </div>
+    `;
   }
 
   function startEdit(book) {
@@ -304,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ratingInput.value = book.rating != null ? book.rating : '';
     tagsInput.value = book.tags || '';
     reviewInput.value = book.review || '';
+    switchView('form');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -344,6 +370,126 @@ document.addEventListener('DOMContentLoaded', () => {
     toastTimer = setTimeout(function () {
       toastEl.classList.remove('toast--show');
     }, 3200);
+  }
+
+  function switchView(view) {
+    if (!currentUser) return;
+    currentView = view;
+    if (viewButtons.length) {
+      viewButtons.forEach((btn) => {
+        btn.classList.toggle('tab-btn--active', btn.dataset.view === view);
+      });
+    }
+    if (bookPanel && listPanel) {
+      bookPanel.hidden = view !== 'form';
+      listPanel.hidden = view !== 'list';
+    }
+  }
+
+  function toggleAmbientLight() {
+    const next = !isLightOn;
+    applyLightState(next);
+    persistLightState(next);
+    if (lightToggle) {
+      lightToggle.classList.add('is-pulled');
+      setTimeout(() => lightToggle.classList.remove('is-pulled'), 350);
+    }
+  }
+
+  function applyLightState(on) {
+    isLightOn = !!on;
+    if (ambient) {
+      ambient.classList.toggle('is-on', isLightOn);
+    }
+    document.body.classList.toggle('light-on', isLightOn);
+  }
+
+  function persistLightState(on) {
+    try {
+      localStorage.setItem(LIGHT_PREF_KEY, on ? 'on' : 'off');
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  function initLightPreference() {
+    try {
+      const saved = localStorage.getItem(LIGHT_PREF_KEY);
+      if (saved === 'on' || saved === 'off') {
+        applyLightState(saved === 'on');
+        return;
+      }
+    } catch (_) {
+      // ignore
+    }
+    applyLightState(false);
+  }
+
+  function openModal(book) {
+    if (!modal || !modalInner) return;
+    const coverHtml = book.cover_url
+      ? `<img src="${book.cover_url}" alt="Cover von ${book.title}" class="cover">`
+      : `<div class="cover cover--placeholder">${book.title ? book.title.charAt(0).toUpperCase() : 'B'}</div>`;
+    const tagsHtml = book.tags ? renderTags(book.tags) : '';
+    const reviewHtml = book.review ? `<p class="book-card__review">${book.review}</p>` : '';
+    modalInner.innerHTML = `
+      <div class="modal__cover-block">
+        ${coverHtml}
+        <span class="badge badge--overlay">${statusLabel(book.status)}</span>
+      </div>
+      <div class="modal__body">
+        <div class="back-header">
+          <span class="badge">${statusLabel(book.status)}</span>
+          <h3 class="book-card__title">${book.title}</h3>
+          <div class="book-card__meta">
+            <span>von ${book.author}</span>
+            ${book.rating ? `<span>★ ${book.rating}</span>` : ''}
+            ${book.created_at ? `<span>${new Date(book.created_at).toLocaleDateString('de-DE')}</span>` : ''}
+          </div>
+        </div>
+        ${tagsHtml}
+        ${reviewHtml}
+        <div class="card-actions">
+          <button class="ghost-btn ghost-btn--small js-edit">Bearbeiten</button>
+          <button class="ghost-btn ghost-btn--small js-delete">Löschen</button>
+        </div>
+      </div>
+    `;
+    modal.hidden = false;
+    modal.classList.add('is-open');
+    requestAnimationFrame(() => {
+      modal.classList.add('is-visible');
+      modalInner.classList.add('is-flipped');
+    });
+    const editBtn = modalInner.querySelector('.js-edit');
+    const deleteBtn = modalInner.querySelector('.js-delete');
+    if (editBtn) {
+      editBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        closeModal();
+        startEdit(book);
+      });
+    }
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (evt) => {
+        evt.stopPropagation();
+        closeModal();
+        await deleteBook(book.id);
+      });
+    }
+  }
+
+  function closeModal() {
+    if (!modal || !modalInner) return;
+    if (modalHideTimer) {
+      clearTimeout(modalHideTimer);
+    }
+    modal.classList.remove('is-visible');
+    modalInner.classList.remove('is-flipped');
+    modalHideTimer = setTimeout(() => {
+      modal.classList.remove('is-open');
+      modal.hidden = true;
+    }, 280);
   }
 
   async function uploadCover(file) {

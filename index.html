@@ -3,40 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bücher-Sammlung</title>
+  <title>Lesezimmer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 </head>
 <body>
-  <div class="page">
-    <header class="hero">
+  <div class="page cozy-bg">
+    <header class="hero hero--cozy">
       <div class="hero__copy">
-        <h1>Bücher sammeln, Rezensionen schreiben.</h1>
+        <p class="eyebrow">Lesezimmer</p>
+        <h1>Einsinken, abschalten, Bücher festhalten.</h1>
       </div>
-      <div class="hero__glass">
-        <div class="stat">
-          <span class="stat__label">Status</span>
-          <span class="stat__value" id="session-status">Abgemeldet</span>
-        </div>
-        <button id="logout-btn" class="ghost-btn" hidden>Abmelden</button>
+      <div class="hero__actions">
+        <span id="session-status" class="sr-only">Abgemeldet</span>
+        <button id="light-toggle" class="pull-cord" type="button" aria-label="Licht umschalten" title="Licht umschalten">
+          <span class="pull-cord__string"></span>
+          <span class="pull-cord__knob"></span>
+        </button>
+        <button id="logout-btn" class="icon-btn" hidden aria-label="Abmelden" title="Abmelden">⇦</button>
       </div>
     </header>
 
-    <main class="layout">
+    <main class="layout layout--cozy">
+      <nav id="view-nav" class="view-nav" hidden>
+        <button class="tab-btn tab-btn--active" data-view="list">Bibliothek</button>
+        <button class="tab-btn" data-view="form">Neues Buch</button>
+      </nav>
+
       <section class="panel panel--auth">
         <div class="panel__header">
           <div>
             <p class="eyebrow">Anmeldung</p>
-            <h2>Login</h2>
+            <h2>Willkommen zurück</h2>
           </div>
         </div>
         <form id="auth-form" class="form-grid">
           <label class="field">
             <span>E-Mail</span>
-            <input type="email" id="auth-email" autocomplete="email" placeholder="E-Mail deines Supabase-Accounts">
+            <input type="email" id="auth-email" autocomplete="email" placeholder="E-Mail">
           </label>
           <label class="field">
             <span>Passwort</span>
@@ -52,7 +59,7 @@
             <p class="eyebrow">Buch hinzufügen</p>
             <h2 id="form-title">Neuer Eintrag</h2>
           </div>
-          <button id="reset-form" class="ghost-btn ghost-btn--small">Neu beginnen</button>
+            <button id="reset-form" class="ghost-btn ghost-btn--small">Neu beginnen</button>
         </div>
         <form id="book-form" class="form-grid">
           <label class="field">
@@ -88,7 +95,7 @@
             <input type="file" id="cover" accept="image/*">
           </label>
           <button type="submit" class="primary-btn" id="book-submit">Speichern</button>
-          <p class="hint">Bilder landen im Supabase Storage-Bucket, die URL wird beim Buch gespeichert.</p>
+          <p class="hint">Covers landen im Supabase Storage, der Link wird beim Buch gespeichert.</p>
         </form>
       </section>
 
@@ -96,7 +103,7 @@
         <div class="panel__header">
           <div>
             <p class="eyebrow">Bibliothek</p>
-            <h2>Deine Bücher</h2>
+            <h2>Deine Regalwand</h2>
           </div>
           <div class="list-filter">
             <label class="field">
@@ -110,14 +117,27 @@
             </label>
           </div>
         </div>
-        <div id="book-list" class="book-grid">
-          <p class="muted">Noch keine Bücher. Lege los!</p>
+        <div class="shelf-wrap shelf-wrap--warm">
+          <div id="book-list" class="book-grid book-grid--shelf">
+            <p class="muted">Noch keine Bücher. Lehn dich zurück und füge das erste hinzu.</p>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
+  <div id="book-modal" class="modal" hidden>
+    <div class="modal__backdrop"></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-label="Buchdetails">
+      <button class="modal__close" type="button" aria-label="Schließen">✕</button>
+      <div class="modal__card">
+        <div id="modal-inner" class="flip-card__inner modal__inner"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="ambient-light" class="ambient-light" aria-hidden="true"></div>
 
   <script src="./app.js" defer></script>
 </body>
