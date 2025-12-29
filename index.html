@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bücher-Sammlung</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero__copy">
+        <h1>Bücher sammeln, Rezensionen schreiben.</h1>
+      </div>
+      <div class="hero__glass">
+        <div class="stat">
+          <span class="stat__label">Status</span>
+          <span class="stat__value" id="session-status">Abgemeldet</span>
+        </div>
+        <button id="logout-btn" class="ghost-btn" hidden>Abmelden</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel--auth">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Anmeldung</p>
+            <h2>Login</h2>
+          </div>
+        </div>
+        <form id="auth-form" class="form-grid">
+          <label class="field">
+            <span>E-Mail</span>
+            <input type="email" id="auth-email" autocomplete="email" placeholder="E-Mail deines Supabase-Accounts">
+          </label>
+          <label class="field">
+            <span>Passwort</span>
+            <input type="password" id="auth-password" autocomplete="current-password" placeholder="Passwort">
+          </label>
+          <button type="submit" class="primary-btn" id="auth-submit">Anmelden</button>
+        </form>
+      </section>
+
+      <section class="panel panel--form" id="book-panel" hidden>
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Buch hinzufügen</p>
+            <h2 id="form-title">Neuer Eintrag</h2>
+          </div>
+          <button id="reset-form" class="ghost-btn ghost-btn--small">Neu beginnen</button>
+        </div>
+        <form id="book-form" class="form-grid">
+          <label class="field">
+            <span>Titel</span>
+            <input type="text" id="title" required placeholder="Titel des Buchs">
+          </label>
+          <label class="field">
+            <span>Autor:in</span>
+            <input type="text" id="author" required placeholder="Autor:in">
+          </label>
+          <label class="field">
+            <span>Status</span>
+            <select id="status">
+              <option value="reading">Am Lesen</option>
+              <option value="finished">Gelesen</option>
+              <option value="wishlist">Merkliste</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Bewertung (0-5)</span>
+            <input type="number" id="rating" min="0" max="5" step="0.5" placeholder="z.B. 4.5">
+          </label>
+          <label class="field field--wide">
+            <span>Tags (Komma-getrennt)</span>
+            <input type="text" id="tags" placeholder="Fantasy, Klassiker, ...">
+          </label>
+          <label class="field field--wide">
+            <span>Rezension / Notizen</span>
+            <textarea id="review" rows="4" placeholder="Was hast du gedacht?"></textarea>
+          </label>
+          <label class="field field--wide">
+            <span>Cover hochladen (JPG/PNG)</span>
+            <input type="file" id="cover" accept="image/*">
+          </label>
+          <button type="submit" class="primary-btn" id="book-submit">Speichern</button>
+          <p class="hint">Bilder landen im Supabase Storage-Bucket, die URL wird beim Buch gespeichert.</p>
+        </form>
+      </section>
+
+      <section class="panel panel--list" id="list-panel" hidden>
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Bibliothek</p>
+            <h2>Deine Bücher</h2>
+          </div>
+          <div class="list-filter">
+            <label class="field">
+              <span>Status filtern</span>
+              <select id="filter-status">
+                <option value="all">Alle</option>
+                <option value="reading">Am Lesen</option>
+                <option value="finished">Gelesen</option>
+                <option value="wishlist">Merkliste</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="book-list" class="book-grid">
+          <p class="muted">Noch keine Bücher. Lege los!</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
