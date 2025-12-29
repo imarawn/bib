@@ -116,12 +116,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function handleLogout() {
-    const { error } = await supabaseClient.auth.signOut();
+    const { error } = await supabaseClient.auth.signOut({ scope: 'local' });
     if (error) {
-      showToast('Abmelden fehlgeschlagen.');
-      return;
+      showToast(error.message || 'Abmelden fehlgeschlagen.');
+    } else {
+      showToast('Abgemeldet.');
     }
-    showToast('Abgemeldet.');
   }
 
   function onAuthChanged(isAuthed) {
