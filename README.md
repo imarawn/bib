@@ -15,6 +15,7 @@ SPA ohne Build-Tool: `index.html`, `styles.css`, `app.js`. Supabase übernimmt A
     author text not null,
     status text default 'reading',
     rating numeric,
+    isbn text,
     summary text,
     tags text,
     review text,
@@ -50,6 +51,8 @@ SPA ohne Build-Tool: `index.html`, `styles.css`, `app.js`. Supabase übernimmt A
 - Regal per Drag & Drop umsortieren, Reihenfolge wird gespeichert.
 - Filter nach Status, Mindestbewertung, Autor:in, Tags, Freitextsuche (Titel/Autor:in/Tags); Sortieren nach manueller Reihenfolge, Datum, Titel, Bewertung.
 - Bearbeiten/Löschen pro Eintrag.
+- ISBN-Feld; per Eingabe oder Barcode-Scan (wenn Browser/Device `BarcodeDetector` unterstützt).
+- Optional: ISBN abfragen (Google Books API) und Titel/Autor automatisch ausfüllen, sofern die Felder leer sind.
 
 ### Hinweise
 - Alle Anfragen gehen direkt vom Browser an Supabase (kein eigener Backend-Server).

@@ -87,6 +87,15 @@
             <span>Bewertung (0-5)</span>
             <input type="number" id="rating" min="0" max="5" step="0.5" placeholder="z.B. 4.5">
           </label>
+          <label class="field">
+            <span>ISBN</span>
+            <div class="input-inline">
+              <input type="text" id="isbn" inputmode="numeric" placeholder="z.B. 978...">
+              <button type="button" class="ghost-btn ghost-btn--small" id="isbn-fetch-btn">Aus ISBN übernehmen</button>
+              <button type="button" class="ghost-btn ghost-btn--small" id="isbn-scan-btn">Barcode scannen</button>
+            </div>
+            <p class="hint">Gib die ISBN ein oder scanne den Strichcode.</p>
+          </label>
           <label class="field field--wide">
             <span>Kurzfassung</span>
             <textarea id="summary" rows="3" placeholder="Worum geht es?"></textarea>
@@ -180,6 +189,29 @@
       <button class="modal__close" type="button" aria-label="Schließen">✕</button>
       <div class="modal__card">
         <div id="modal-inner" class="flip-card__inner modal__inner"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="scan-modal" class="modal modal--scan" hidden>
+    <div class="modal__backdrop"></div>
+    <div class="modal__dialog modal__dialog--scan" role="dialog" aria-modal="true" aria-label="Barcode scannen">
+      <div class="modal__card modal__card--scan">
+        <div class="modal__scan-header">
+          <h3>Barcode scannen</h3>
+          <button class="modal__close modal__close--scan" type="button" aria-label="Schließen">✕</button>
+        </div>
+        <div class="scan-box">
+          <div class="scan-box__video">
+            <video id="scan-video" playsinline muted></video>
+            <div class="scan-box__overlay"></div>
+          </div>
+          <div class="scan-box__footer">
+            <span id="scan-status" class="muted">Kamera wird gestartet...</span>
+            <button type="button" class="ghost-btn ghost-btn--small" id="scan-stop-btn">Scan stoppen</button>
+          </div>
+        </div>
+        <p class="hint">Falls der Scan nicht klappt, gib die ISBN manuell ein.</p>
       </div>
     </div>
   </div>

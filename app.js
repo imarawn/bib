@@ -31,6 +31,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const authorInput = document.getElementById('author');
   const statusSelect = document.getElementById('status');
   const ratingInput = document.getElementById('rating');
+  const isbnInput = document.getElementById('isbn');
+  const isbnFetchBtn = document.getElementById('isbn-fetch-btn');
+  const isbnScanBtn = document.getElementById('isbn-scan-btn');
+  const scanModal = document.getElementById('scan-modal');
+  const scanModalClose = scanModal ? scanModal.querySelector('.modal__close--scan') : null;
+  const scanModalBackdrop = scanModal ? scanModal.querySelector('.modal__backdrop') : null;
+  const scanVideo = document.getElementById('scan-video');
+  const scanStatus = document.getElementById('scan-status');
+  const scanStopBtn = document.getElementById('scan-stop-btn');
   const summaryInput = document.getElementById('summary');
   const tagsInput = document.getElementById('tags');
   const reviewInput = document.getElementById('review');
@@ -60,6 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let modalHideTimer = null;
   let isLightOn = false;
   const dragState = { draggingId: null, isDragging: false };
+  let scanStream = null;
+  let scanDetector = null;
+  let scanFrameRequest = null;
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -104,6 +116,23 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  if (isbnFetchBtn) {
+    isbnFetchBtn.addEventListener('click', () => {
+      autofillFromIsbn(true);
+    });
+  }
+  if (isbnScanBtn) {
+    isbnScanBtn.addEventListener('click', startIsbnScan);
+  }
+  if (scanModalClose) {
+    scanModalClose.addEventListener('click', stopIsbnScan);
+  }
+  if (scanModalBackdrop) {
+    scanModalBackdrop.addEventListener('click', stopIsbnScan);
+  }
+  if (scanStopBtn) {
+    scanStopBtn.addEventListener('click', stopIsbnScan);
+  }
   viewButtons.forEach((btn) => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
@@ -118,7 +147,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.addEventListener('keydown', (evt) => {
     if (evt.key === 'Escape') {
-      closeModal();
+      if (scanModal && !scanModal.hidden) {
+        stopIsbnScan();
+      } else {
+        closeModal();
+      }
     }
   });
 
@@ -210,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
       author: authorInput.value.trim(),
       status: statusSelect.value,
       rating: ratingInput.value ? Number(ratingInput.value) : null,
+      isbn: isbnInput.value.trim(),
       summary: summaryInput.value.trim(),
       tags: tagsInput.value.trim(),
       review: reviewInput.value.trim()
@@ -326,6 +360,10 @@ document.addEventListener('DOMContentLoaded', () => {
         placeholder.textContent = book.title ? book.title.charAt(0).toUpperCase() : 'B';
         coverBox.appendChild(placeholder);
       }
+      const overlay = document.createElement('div');
+      overlay.className = 'book-card__overlay';
+      overlay.textContent = book.title || 'Ohne Titel';
+      coverBox.appendChild(overlay);
 
       const body = document.createElement('div');
       body.className = 'book-card__body';
@@ -535,6 +573,131 @@ document.addEventListener('DOMContentLoaded', () => {
     return manual && !hasSearch && !hasRatingFilter && !hasAuthorFilter && !hasTagFilter;
   }
 
+  async function startIsbnScan() {
+    if (!('BarcodeDetector' in window)) {
+      showToast('Barcode-Scan wird nicht unterstützt. Bitte ISBN eingeben.');
+      return;
+    }
+    if (!scanVideo || !scanModal) return;
+    stopIsbnScan();
+    try {
+      scanDetector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128'] });
+    } catch (err) {
+      showToast('Scanner konnte nicht initialisiert werden.');
+      return;
+    }
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
+      scanVideo.srcObject = scanStream;
+      await scanVideo.play();
+      showScanModal();
+      if (scanStatus) scanStatus.textContent = 'Scannen... halte den Strichcode ins Bild.';
+      detectLoop();
+    } catch (err) {
+      showToast('Kamera nicht verfügbar.');
+      stopIsbnScan();
+    }
+  }
+
+  function stopIsbnScan() {
+    if (scanFrameRequest) {
+      cancelAnimationFrame(scanFrameRequest);
+      scanFrameRequest = null;
+    }
+    if (scanStream) {
+      scanStream.getTracks().forEach((t) => t.stop());
+      scanStream = null;
+    }
+    if (scanVideo) {
+      scanVideo.srcObject = null;
+    }
+    if (scanStatus) {
+      scanStatus.textContent = 'Scan gestoppt.';
+    }
+    hideScanModal();
+  }
+
+  async function detectLoop() {
+    if (!scanDetector || !scanVideo || scanVideo.readyState < 2) {
+      scanFrameRequest = requestAnimationFrame(detectLoop);
+      return;
+    }
+    try {
+      const codes = await scanDetector.detect(scanVideo);
+      if (codes && codes.length) {
+        const value = codes[0].rawValue;
+        if (value && isbnInput) {
+          isbnInput.value = value;
+          showToast('ISBN übernommen.');
+          autofillFromIsbn(false);
+          stopIsbnScan();
+          return;
+        }
+      }
+    } catch (err) {
+      // ignore detection errors and keep scanning
+    }
+    scanFrameRequest = requestAnimationFrame(detectLoop);
+  }
+
+  function showScanModal() {
+    if (!scanModal) return;
+    scanModal.hidden = false;
+    scanModal.classList.add('is-open');
+    requestAnimationFrame(() => scanModal.classList.add('is-visible'));
+  }
+
+  function hideScanModal() {
+    if (!scanModal) return;
+    scanModal.classList.remove('is-visible');
+    setTimeout(() => {
+      scanModal.classList.remove('is-open');
+      scanModal.hidden = true;
+    }, 160);
+  }
+
+  async function autofillFromIsbn(showErrors) {
+    if (!isbnInput) return;
+    const isbn = isbnInput.value.trim();
+    if (!isbn) {
+      if (showErrors) showToast('Bitte ISBN eingeben.');
+      return;
+    }
+
+    const btn = isbnFetchBtn;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Lädt...';
+    }
+    try {
+      const resp = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`);
+      if (!resp.ok) throw new Error('Suche fehlgeschlagen');
+      const data = await resp.json();
+      const volume = data.items && data.items[0];
+      const info = volume ? volume.volumeInfo : null;
+      if (!info) {
+        if (showErrors) showToast('Keine Daten zur ISBN gefunden.');
+        return;
+      }
+      if (info.title && !titleInput.value.trim()) {
+        titleInput.value = info.title;
+      }
+      if (info.authors && info.authors.length && !authorInput.value.trim()) {
+        authorInput.value = info.authors.join(', ');
+      }
+      showToast('Titel/Autor ausgefüllt (falls leer).');
+    } catch (err) {
+      if (showErrors) showToast('Konnte ISBN nicht abfragen.');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Aus ISBN übernehmen';
+      }
+    }
+  }
+
   function toggleFilterPanel() {
     if (!filterPanel) return;
     filterPanel.hidden = !filterPanel.hidden;
@@ -591,6 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
     authorInput.value = book.author || '';
     statusSelect.value = book.status || 'reading';
     ratingInput.value = book.rating != null ? book.rating : '';
+    isbnInput.value = book.isbn || '';
     summaryInput.value = book.summary || '';
     tagsInput.value = book.tags || '';
     reviewInput.value = book.review || '';
@@ -640,6 +804,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function switchView(view) {
     if (!currentUser) return;
     currentView = view;
+    if (view !== 'form') {
+      stopIsbnScan();
+    }
     if (viewButtons.length) {
       viewButtons.forEach((btn) => {
         btn.classList.toggle('tab-btn--active', btn.dataset.view === view);
@@ -707,10 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="back-header">
           <span class="badge">${statusLabel(book.status)}</span>
           <h3 class="book-card__title">${book.title}</h3>
-          <div class="book-card__meta">
+          <div class="book-card__meta book-card__meta--stacked">
             <span>von ${book.author}</span>
-            ${book.rating ? `<span>★ ${book.rating}</span>` : ''}
+            ${book.isbn ? `<span>ISBN ${book.isbn}</span>` : ''}
             ${book.created_at ? `<span>${new Date(book.created_at).toLocaleDateString('de-DE')}</span>` : ''}
+            ${book.rating ? `<span>★ ${book.rating}</span>` : ''}
           </div>
         </div>
         ${summaryHtml}

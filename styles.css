@@ -369,6 +369,82 @@ body {
   color: var(--muted);
 }
 
+.input-inline {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.scan-box {
+  margin-top: -6px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: rgba(28, 24, 21, 0.6);
+  display: grid;
+  gap: 8px;
+}
+
+.scan-box__video {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d0a08;
+  min-height: 180px;
+}
+
+.scan-box__video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scan-box__overlay {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(215, 162, 95, 0.8);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 999px rgba(0, 0, 0, 0.35),
+    0 0 0 2px rgba(215, 162, 95, 0.28);
+  pointer-events: none;
+}
+
+.scan-box__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal--scan .modal__dialog {
+  max-width: 480px;
+  width: min(92vw, 480px);
+}
+
+.modal__card--scan {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.modal__scan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.modal__scan-header h3 {
+  margin: 0;
+}
+
 .field input,
 .field textarea,
 .field select {
@@ -551,6 +627,33 @@ body {
   height: 100%;
 }
 
+.book-card__overlay {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(15, 12, 10, 0.82);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.book-card:hover .book-card__overlay,
+.book-card:focus-visible .book-card__overlay {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .book-card__body {
   display: none;
 }
@@ -591,6 +694,13 @@ body {
    font-size: 14px;
    color: var(--muted);
  }
+
+.book-card__meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--muted);
+}
 
 .tag-list {
   display: flex;
