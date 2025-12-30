@@ -206,10 +206,18 @@
             <video id="scan-video" playsinline muted></video>
             <div class="scan-box__overlay"></div>
           </div>
+          <div class="scan-mode">
+            <label class="checkbox">
+              <input type="checkbox" id="scan-quick-toggle">
+              <span>Schnellscan (automatisch speichern)</span>
+            </label>
+            <p class="hint">Füllt Titel/Autor, speichert und scannt weiter. Ohne Treffer gelangst du ins Formular.</p>
+          </div>
           <div class="scan-box__footer">
             <span id="scan-status" class="muted">Kamera wird gestartet...</span>
             <button type="button" class="ghost-btn ghost-btn--small" id="scan-stop-btn">Scan stoppen</button>
           </div>
+          <p id="scan-last" class="scan-last">Letzter Scan: –</p>
         </div>
         <p class="hint">Falls der Scan nicht klappt, gib die ISBN manuell ein.</p>
       </div>

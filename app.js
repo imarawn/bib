@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const scanVideo = document.getElementById('scan-video');
   const scanStatus = document.getElementById('scan-status');
   const scanStopBtn = document.getElementById('scan-stop-btn');
+  const scanQuickToggle = document.getElementById('scan-quick-toggle');
+  const scanLast = document.getElementById('scan-last');
   const summaryInput = document.getElementById('summary');
   const tagsInput = document.getElementById('tags');
   const reviewInput = document.getElementById('review');
@@ -72,6 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let scanStream = null;
   let scanDetector = null;
   let scanFrameRequest = null;
+  let lastScanValue = null;
+  let lastScanClearTimer = null;
+  let lastSavedIsbn = null;
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -118,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (isbnFetchBtn) {
     isbnFetchBtn.addEventListener('click', () => {
-      autofillFromIsbn(true);
+      autofillFromIsbn({ showErrors: true });
     });
   }
   if (isbnScanBtn) {
@@ -628,10 +633,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const codes = await scanDetector.detect(scanVideo);
       if (codes && codes.length) {
         const value = codes[0].rawValue;
+        if (value === lastScanValue) {
+          scanFrameRequest = requestAnimationFrame(detectLoop);
+          return;
+        }
+        lastScanValue = value;
+        if (lastScanClearTimer) clearTimeout(lastScanClearTimer);
+        lastScanClearTimer = setTimeout(() => {
+          lastScanValue = null;
+        }, 1200);
         if (value && isbnInput) {
+          if (value === lastSavedIsbn) {
+            showToast('Schon gescannt.');
+            scanFrameRequest = requestAnimationFrame(detectLoop);
+            return;
+          }
           isbnInput.value = value;
           showToast('ISBN übernommen.');
-          autofillFromIsbn(false);
+          const quickMode = scanQuickToggle ? scanQuickToggle.checked : false;
+          const info = await autofillFromIsbn({ showErrors: false, returnInfo: true });
+          if (quickMode) {
+            const ok = await maybeQuickSave(info, value);
+            if (ok) {
+              scanFrameRequest = requestAnimationFrame(detectLoop);
+              return;
+            }
+          }
           stopIsbnScan();
           return;
         }
@@ -658,15 +685,66 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 160);
   }
 
-  async function autofillFromIsbn(showErrors) {
+  async function maybeQuickSave(info, isbnValue) {
+    const quickMode = scanQuickToggle ? scanQuickToggle.checked : false;
+    if (!quickMode) return false;
+
+    const hasInfo = info && info.title && info.authors && info.authors.length;
+    if (!hasInfo) {
+      showToast('Keine Daten gefunden, bitte ergänzen.');
+      return false;
+    }
+
+    const exists = books.some((b) => (b.isbn || '').trim() === isbnValue);
+    if (exists) {
+      showToast('Schon vorhanden.');
+      lastSavedIsbn = isbnValue;
+      updateLastScan(info.title, isbnValue);
+      return true;
+    }
+
+    const payload = {
+      title: info.title,
+      author: info.authors.join(', '),
+      isbn: isbnValue,
+      status: statusSelect ? statusSelect.value : 'wishlist',
+      rating: null,
+      summary: '',
+      tags: '',
+      review: '',
+      user_id: currentUser.id,
+      sort_order: getNextSortOrder()
+    };
+
+    const { error } = await supabaseClient.from('books').insert(payload);
+    if (error) {
+      showToast('Konnte Buch nicht speichern.');
+      return false;
+    }
+    showToast('Gespeichert: ' + info.title);
+    resetBookForm();
+    if (isbnInput) isbnInput.value = '';
+    loadBooks();
+    lastSavedIsbn = isbnValue;
+    updateLastScan(info.title, isbnValue);
+    return true;
+  }
+
+  function updateLastScan(title, isbn) {
+    if (!scanLast) return;
+    scanLast.textContent = `Letzter Scan: ${title || 'Ohne Titel'} (${isbn || '–'})`;
+  }
+
+  async function autofillFromIsbn(options) {
+    const opts = Object.assign({ showErrors: true, returnInfo: false }, options);
     if (!isbnInput) return;
     const isbn = isbnInput.value.trim();
     if (!isbn) {
-      if (showErrors) showToast('Bitte ISBN eingeben.');
+      if (opts.showErrors) showToast('Bitte ISBN eingeben.');
       return;
     }
 
-    const btn = isbnFetchBtn;
+    const btn = opts.showErrors ? isbnFetchBtn : null;
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Lädt...';
@@ -678,8 +756,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const volume = data.items && data.items[0];
       const info = volume ? volume.volumeInfo : null;
       if (!info) {
-        if (showErrors) showToast('Keine Daten zur ISBN gefunden.');
-        return;
+        if (opts.showErrors) showToast('Keine Daten zur ISBN gefunden.');
+        return opts.returnInfo ? null : undefined;
       }
       if (info.title && !titleInput.value.trim()) {
         titleInput.value = info.title;
@@ -687,9 +765,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (info.authors && info.authors.length && !authorInput.value.trim()) {
         authorInput.value = info.authors.join(', ');
       }
-      showToast('Titel/Autor ausgefüllt (falls leer).');
+      if (opts.showErrors) showToast('Titel/Autor ausgefüllt (falls leer).');
+      if (opts.returnInfo) return info;
+      return;
     } catch (err) {
-      if (showErrors) showToast('Konnte ISBN nicht abfragen.');
+      if (opts.showErrors) showToast('Konnte ISBN nicht abfragen.');
+      if (opts.returnInfo) return null;
     } finally {
       if (btn) {
         btn.disabled = false;
