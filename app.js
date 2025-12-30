@@ -77,6 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastScanValue = null;
   let lastScanClearTimer = null;
   let lastSavedIsbn = null;
+  let zxingLibPromise = null;
+  let zxingReader = null;
+  let zxingControls = null;
+  const ZXING_SRC = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js';
+  let cameraPermissionDenied = false;
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -579,34 +584,46 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function startIsbnScan() {
-    if (!('BarcodeDetector' in window)) {
-      showToast('Barcode-Scan wird nicht unterstützt. Bitte ISBN eingeben.');
-      return;
-    }
     if (!scanVideo || !scanModal) return;
-    stopIsbnScan();
-    try {
-      scanDetector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128'] });
-    } catch (err) {
-      showToast('Scanner konnte nicht initialisiert werden.');
+    stopIsbnScan({ keepModal: true });
+    showScanModal();
+    if (scanStatus) scanStatus.textContent = 'Kamera wird gestartet...';
+    const hasNativeDetector = typeof window.BarcodeDetector === 'function';
+    scanVideo.setAttribute('playsinline', 'true');
+    scanVideo.playsInline = true;
+    scanVideo.muted = true;
+
+    if (hasNativeDetector) {
+      try {
+        scanDetector = new window.BarcodeDetector({ formats: ['ean_13', 'code_128'] });
+      } catch (err) {
+        scanDetector = null;
+      }
+    }
+
+    cameraPermissionDenied = false;
+
+    if (scanDetector) {
+      const started = await startNativeScan();
+      if (started) return;
+    }
+
+    if (cameraPermissionDenied) {
+      if (scanStatus) {
+        scanStatus.textContent =
+          'Kamera-Zugriff abgelehnt. Bitte erlauben oder ISBN manuell eingeben.';
+      }
       return;
     }
-    try {
-      scanStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      scanVideo.srcObject = scanStream;
-      await scanVideo.play();
-      showScanModal();
-      if (scanStatus) scanStatus.textContent = 'Scannen... halte den Strichcode ins Bild.';
-      detectLoop();
-    } catch (err) {
-      showToast('Kamera nicht verfügbar.');
-      stopIsbnScan();
+
+    const fallbackStarted = await startFallbackScan();
+    if (!fallbackStarted && scanStatus) {
+      scanStatus.textContent = 'Kamera nicht verfügbar. Bitte Zugriff erlauben oder manuell eingeben.';
     }
   }
 
-  function stopIsbnScan() {
+  function stopIsbnScan(options = {}) {
+    const opts = Object.assign({ keepModal: false }, options);
     if (scanFrameRequest) {
       cancelAnimationFrame(scanFrameRequest);
       scanFrameRequest = null;
@@ -615,13 +632,22 @@ document.addEventListener('DOMContentLoaded', () => {
       scanStream.getTracks().forEach((t) => t.stop());
       scanStream = null;
     }
+    if (zxingControls) {
+      zxingControls.stop();
+      zxingControls = null;
+    }
+    if (zxingReader) {
+      zxingReader.reset();
+    }
     if (scanVideo) {
       scanVideo.srcObject = null;
     }
     if (scanStatus) {
-      scanStatus.textContent = 'Scan gestoppt.';
+      scanStatus.textContent = opts.statusText || 'Scan gestoppt.';
     }
-    hideScanModal();
+    if (!opts.keepModal) {
+      hideScanModal();
+    }
   }
 
   async function detectLoop() {
@@ -633,40 +659,142 @@ document.addEventListener('DOMContentLoaded', () => {
       const codes = await scanDetector.detect(scanVideo);
       if (codes && codes.length) {
         const value = codes[0].rawValue;
-        if (value === lastScanValue) {
+        const shouldContinue = await handleScanValue(value);
+        if (shouldContinue) {
           scanFrameRequest = requestAnimationFrame(detectLoop);
           return;
         }
-        lastScanValue = value;
-        if (lastScanClearTimer) clearTimeout(lastScanClearTimer);
-        lastScanClearTimer = setTimeout(() => {
-          lastScanValue = null;
-        }, 1200);
-        if (value && isbnInput) {
-          if (value === lastSavedIsbn) {
-            showToast('Schon gescannt.');
-            scanFrameRequest = requestAnimationFrame(detectLoop);
-            return;
-          }
-          isbnInput.value = value;
-          showToast('ISBN übernommen.');
-          const quickMode = scanQuickToggle ? scanQuickToggle.checked : false;
-          const info = await autofillFromIsbn({ showErrors: false, returnInfo: true });
-          if (quickMode) {
-            const ok = await maybeQuickSave(info, value);
-            if (ok) {
-              scanFrameRequest = requestAnimationFrame(detectLoop);
-              return;
-            }
-          }
-          stopIsbnScan();
-          return;
-        }
+        return;
       }
     } catch (err) {
       // ignore detection errors and keep scanning
     }
     scanFrameRequest = requestAnimationFrame(detectLoop);
+  }
+
+  async function startNativeScan() {
+    try {
+      scanStream = await getCameraStream();
+      scanVideo.srcObject = scanStream;
+      scanVideo.muted = true;
+      await scanVideo.play();
+      if (scanStatus) scanStatus.textContent = 'Scannen... halte den Strichcode ins Bild.';
+      detectLoop();
+      return true;
+    } catch (err) {
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      cameraPermissionDenied = cameraPermissionDenied || denied;
+      showToast(denied ? 'Kamera-Zugriff abgelehnt.' : 'Kamera nicht verfügbar.');
+      stopIsbnScan({
+        keepModal: true,
+        statusText: denied
+          ? 'Kamera-Zugriff abgelehnt. Erlaube Zugriff oder gib die ISBN ein.'
+          : 'Kamera nicht verfügbar. Zugriff erlauben?'
+      });
+      return false;
+    }
+  }
+
+  async function startFallbackScan() {
+    const zxing = await loadZxing();
+    if (!zxing || !zxing.BrowserMultiFormatReader) {
+      showToast('Barcode-Scan wird nicht unterstützt. Bitte ISBN eingeben.');
+      return false;
+    }
+    try {
+      zxingReader = zxingReader || new zxing.BrowserMultiFormatReader();
+      const constraints = { video: { facingMode: { ideal: 'environment' } } };
+      const decodeFn =
+        typeof zxingReader.decodeFromConstraints === 'function'
+          ? () => zxingReader.decodeFromConstraints(constraints, scanVideo, async (result) => {
+              const value = result?.getText ? result.getText() : result?.text || result?.rawValue;
+              if (value) {
+                await handleScanValue(value);
+              }
+            })
+          : () =>
+              zxingReader.decodeFromVideoDevice(null, scanVideo, async (result) => {
+                const value = result?.getText ? result.getText() : result?.text || result?.rawValue;
+                if (value) {
+                  await handleScanValue(value);
+                }
+              });
+      zxingControls = await decodeFn();
+      if (scanStatus) scanStatus.textContent = 'Scannen... halte den Strichcode ins Bild.';
+      return true;
+    } catch (err) {
+      showToast('Kamera nicht verfügbar.');
+      stopIsbnScan({ keepModal: true, statusText: 'Kamera nicht verfügbar. Zugriff erlauben?' });
+      return false;
+    }
+  }
+
+  async function handleScanValue(value) {
+    if (!value) return true;
+    if (value === lastScanValue) {
+      return true;
+    }
+    lastScanValue = value;
+    if (lastScanClearTimer) clearTimeout(lastScanClearTimer);
+    lastScanClearTimer = setTimeout(() => {
+      lastScanValue = null;
+    }, 1200);
+
+    if (!isbnInput) return true;
+    if (value === lastSavedIsbn) {
+      showToast('Schon gescannt.');
+      return true;
+    }
+    isbnInput.value = value;
+    showToast('ISBN übernommen.');
+    const quickMode = scanQuickToggle ? scanQuickToggle.checked : false;
+    const info = await autofillFromIsbn({ showErrors: false, returnInfo: true });
+    if (quickMode) {
+      const ok = await maybeQuickSave(info, value);
+      if (ok) {
+        return true;
+      }
+    }
+    stopIsbnScan();
+    return false;
+  }
+
+  async function getCameraStream() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    }
+    const legacyGetUserMedia =
+      navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    if (!legacyGetUserMedia) {
+      throw new Error('no camera api');
+    }
+    return new Promise((resolve, reject) => {
+      legacyGetUserMedia.call(navigator, { video: true }, resolve, reject);
+    });
+  }
+
+  async function loadZxing() {
+    if (window.ZXingBrowser && window.ZXingBrowser.BrowserMultiFormatReader) {
+      return window.ZXingBrowser;
+    }
+    if (window.ZXing && window.ZXing.BrowserMultiFormatReader) {
+      return window.ZXing;
+    }
+    if (zxingLibPromise) return zxingLibPromise;
+    zxingLibPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = ZXING_SRC;
+      script.async = true;
+      script.onload = () => resolve(window.ZXingBrowser || window.ZXing || null);
+      script.onerror = (err) => reject(err);
+      document.head.appendChild(script);
+    });
+    try {
+      return await zxingLibPromise;
+    } catch (err) {
+      zxingLibPromise = null;
+      return null;
+    }
   }
 
   function showScanModal() {
