@@ -586,10 +586,19 @@ document.addEventListener('DOMContentLoaded', () => {
   async function startIsbnScan() {
     if (!scanVideo || !scanModal) return;
     stopIsbnScan({ keepModal: true });
+    if (!isSecureCameraContext()) {
+      showToast('Kamera benötigt HTTPS oder localhost.');
+      showScanModal();
+      if (scanStatus) {
+        scanStatus.textContent = 'Bitte Seite über HTTPS oder localhost öffnen.';
+      }
+      return;
+    }
     showScanModal();
     if (scanStatus) scanStatus.textContent = 'Kamera wird gestartet...';
     const hasNativeDetector = typeof window.BarcodeDetector === 'function';
     scanVideo.setAttribute('playsinline', 'true');
+    scanVideo.setAttribute('muted', 'true');
     scanVideo.playsInline = true;
     scanVideo.muted = true;
 
@@ -723,8 +732,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (scanStatus) scanStatus.textContent = 'Scannen... halte den Strichcode ins Bild.';
       return true;
     } catch (err) {
-      showToast('Kamera nicht verfügbar.');
-      stopIsbnScan({ keepModal: true, statusText: 'Kamera nicht verfügbar. Zugriff erlauben?' });
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      cameraPermissionDenied = cameraPermissionDenied || denied;
+      showToast(denied ? 'Kamera-Zugriff abgelehnt.' : 'Kamera nicht verfügbar.');
+      stopIsbnScan({
+        keepModal: true,
+        statusText: denied
+          ? 'Kamera-Zugriff abgelehnt. Erlaube Zugriff oder gib die ISBN ein.'
+          : 'Kamera nicht verfügbar. Zugriff erlauben?'
+      });
       return false;
     }
   }
@@ -771,6 +787,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return new Promise((resolve, reject) => {
       legacyGetUserMedia.call(navigator, { video: true }, resolve, reject);
     });
+  }
+
+  function isSecureCameraContext() {
+    if (window.isSecureContext) return true;
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1';
   }
 
   async function loadZxing() {
