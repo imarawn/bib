@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const authorInput = document.getElementById('author');
   const statusSelect = document.getElementById('status');
   const ratingInput = document.getElementById('rating');
+  const summaryInput = document.getElementById('summary');
   const tagsInput = document.getElementById('tags');
   const reviewInput = document.getElementById('review');
   const coverInput = document.getElementById('cover');
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentView = 'list';
   let modalHideTimer = null;
   let isLightOn = false;
+  const dragState = { draggingId: null, isDragging: false };
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -165,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
       author: authorInput.value.trim(),
       status: statusSelect.value,
       rating: ratingInput.value ? Number(ratingInput.value) : null,
+      summary: summaryInput.value.trim(),
       tags: tagsInput.value.trim(),
       review: reviewInput.value.trim()
     };
@@ -199,7 +202,10 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Buch aktualisiert.');
       }
     } else {
-      const insertPayload = Object.assign({}, payload, { user_id: currentUser.id });
+      const insertPayload = Object.assign({}, payload, {
+        user_id: currentUser.id,
+        sort_order: getNextSortOrder()
+      });
       const response = await supabaseClient.from('books').insert(insertPayload);
       error = response.error;
       if (!error) {
@@ -247,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    books = data || [];
+    books = normalizeSortOrder(data || []);
     renderBooks(books);
   }
 
@@ -262,6 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const card = document.createElement('article');
       card.className = 'book-card';
       card.tabIndex = 0;
+      card.dataset.id = book.id;
+      card.draggable = true;
 
       const inner = document.createElement('div');
       inner.className = 'book-card__inner';
@@ -293,7 +301,10 @@ document.addEventListener('DOMContentLoaded', () => {
       inner.appendChild(body);
       card.appendChild(inner);
 
+      attachDragEvents(card, book);
+
       card.addEventListener('click', () => {
+        if (dragState.isDragging) return;
         openModal(book);
       });
       card.addEventListener('keypress', (evt) => {
@@ -320,6 +331,96 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 
+  function attachDragEvents(card, book) {
+    card.addEventListener('dragstart', (evt) => {
+      dragState.draggingId = book.id;
+      dragState.isDragging = true;
+      card.classList.add('book-card--dragging');
+      if (evt.dataTransfer) {
+        evt.dataTransfer.effectAllowed = 'move';
+        evt.dataTransfer.setData('text/plain', book.id);
+      }
+    });
+    card.addEventListener('dragend', () => {
+      dragState.draggingId = null;
+      setTimeout(() => {
+        dragState.isDragging = false;
+      }, 30);
+      card.classList.remove('book-card--dragging');
+      card.classList.remove('book-card--drop-target');
+    });
+    card.addEventListener('dragover', (evt) => {
+      if (!dragState.draggingId || dragState.draggingId === book.id) return;
+      evt.preventDefault();
+      card.classList.add('book-card--drop-target');
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('book-card--drop-target');
+    });
+    card.addEventListener('drop', (evt) => {
+      evt.preventDefault();
+      card.classList.remove('book-card--drop-target');
+      const sourceId = dragState.draggingId;
+      if (!sourceId || sourceId === book.id) return;
+      reorderBooks(sourceId, book.id);
+    });
+  }
+
+  function reorderBooks(sourceId, targetId) {
+    const next = [...books];
+    const fromIndex = next.findIndex((b) => b.id === sourceId);
+    const toIndex = next.findIndex((b) => b.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    assignSortOrder(next);
+    books = next;
+    renderBooks(books);
+    persistSortOrder(next);
+  }
+
+  function assignSortOrder(list) {
+    list.forEach((item, index) => {
+      item.sort_order = index + 1;
+    });
+  }
+
+  async function persistSortOrder(list) {
+    const updates = list.map((item) =>
+      supabaseClient
+        .from('books')
+        .update({ sort_order: item.sort_order })
+        .eq('id', item.id)
+        .eq('user_id', currentUser.id)
+    );
+    const results = await Promise.all(updates);
+    const firstError = results.find((res) => res.error)?.error;
+    if (firstError) {
+      showToast('Konnte Reihenfolge nicht speichern.');
+    }
+  }
+
+  function normalizeSortOrder(list) {
+    if (!list.length) return [];
+    const sorted = [...list].sort((a, b) => {
+      if (a.sort_order == null && b.sort_order == null) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (a.sort_order == null) return 1;
+      if (b.sort_order == null) return -1;
+      return a.sort_order - b.sort_order;
+    });
+    assignSortOrder(sorted);
+    return sorted;
+  }
+
+  function getNextSortOrder() {
+    if (!books.length) return 1;
+    const maxOrder = Math.max(...books.map((b) => b.sort_order || 0));
+    return maxOrder + 1;
+  }
+
   function startEdit(book) {
     editingId = book.id;
     formTitle.textContent = 'Bearbeite ' + book.title;
@@ -327,6 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
     authorInput.value = book.author || '';
     statusSelect.value = book.status || 'reading';
     ratingInput.value = book.rating != null ? book.rating : '';
+    summaryInput.value = book.summary || '';
     tagsInput.value = book.tags || '';
     reviewInput.value = book.review || '';
     switchView('form');
@@ -431,6 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `<img src="${book.cover_url}" alt="Cover von ${book.title}" class="cover">`
       : `<div class="cover cover--placeholder">${book.title ? book.title.charAt(0).toUpperCase() : 'B'}</div>`;
     const tagsHtml = book.tags ? renderTags(book.tags) : '';
+    const summaryHtml = book.summary ? `<p class="book-card__summary">${book.summary}</p>` : '';
     const reviewHtml = book.review ? `<p class="book-card__review">${book.review}</p>` : '';
     modalInner.innerHTML = `
       <div class="modal__cover-block">
@@ -447,6 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${book.created_at ? `<span>${new Date(book.created_at).toLocaleDateString('de-DE')}</span>` : ''}
           </div>
         </div>
+        ${summaryHtml}
         ${tagsHtml}
         ${reviewHtml}
         <div class="card-actions">

@@ -15,9 +15,11 @@ SPA ohne Build-Tool: `index.html`, `styles.css`, `app.js`. Supabase übernimmt A
     author text not null,
     status text default 'reading',
     rating numeric,
+    summary text,
     tags text,
     review text,
     cover_url text,
+    sort_order integer,
     created_at timestamp with time zone default now()
   );
 
@@ -43,8 +45,9 @@ SPA ohne Build-Tool: `index.html`, `styles.css`, `app.js`. Supabase übernimmt A
 ### Nutzung
 - Öffne `index.html` lokal oder über ein Static Hosting (Supabase, Netlify, Vercel, S3).
 - Registrierung/Anmeldung per E-Mail/Passwort.
-- Bücher anlegen, Status setzen, Bewertung/Rezension ergänzen, Tags hinterlegen.
+- Bücher anlegen, Status setzen, Kurzfassung/Bewertung/Rezension ergänzen, Tags hinterlegen.
 - Cover-Upload landet im Storage, die öffentliche URL wird beim Buch gespeichert.
+- Regal per Drag & Drop umsortieren, Reihenfolge wird gespeichert.
 - Filter nach Status, Bearbeiten/Löschen pro Eintrag.
 
 ### Hinweise
