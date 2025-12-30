@@ -48,7 +48,8 @@ SPA ohne Build-Tool: `index.html`, `styles.css`, `app.js`. Supabase übernimmt A
 - Bücher anlegen, Status setzen, Kurzfassung/Bewertung/Rezension ergänzen, Tags hinterlegen.
 - Cover-Upload landet im Storage, die öffentliche URL wird beim Buch gespeichert.
 - Regal per Drag & Drop umsortieren, Reihenfolge wird gespeichert.
-- Filter nach Status, Bearbeiten/Löschen pro Eintrag.
+- Filter nach Status, Mindestbewertung, Autor:in, Tags, Freitextsuche (Titel/Autor:in/Tags); Sortieren nach manueller Reihenfolge, Datum, Titel, Bewertung.
+- Bearbeiten/Löschen pro Eintrag.
 
 ### Hinweise
 - Alle Anfragen gehen direkt vom Browser an Supabase (kein eigener Backend-Server).

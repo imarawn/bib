@@ -15,6 +15,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const listPanel = document.getElementById('list-panel');
   const toastEl = document.getElementById('toast');
   const filterStatus = document.getElementById('filter-status');
+  const filterQuery = document.getElementById('filter-query');
+  const filterRating = document.getElementById('filter-rating');
+  const filterAuthor = document.getElementById('filter-author');
+  const filterTag = document.getElementById('filter-tag');
+  const sortSelect = document.getElementById('sort-by');
+  const filterToggle = document.getElementById('filter-toggle');
+  const filterPanel = document.getElementById('filter-panel');
   const authSubmitBtn = document.getElementById('auth-submit');
 
   const bookForm = document.getElementById('book-form');
@@ -58,9 +65,45 @@ document.addEventListener('DOMContentLoaded', () => {
   logoutBtn.addEventListener('click', handleLogout);
   bookForm.addEventListener('submit', handleBookSubmit);
   resetFormBtn.addEventListener('click', resetBookForm);
-  filterStatus.addEventListener('change', () => {
-    loadBooks();
-  });
+  filterStatus.addEventListener('change', applyFiltersAndSort);
+  if (filterQuery) {
+    filterQuery.addEventListener('input', applyFiltersAndSort);
+  }
+  if (filterRating) {
+    filterRating.addEventListener('change', applyFiltersAndSort);
+  }
+  if (filterAuthor) {
+    filterAuthor.addEventListener('change', applyFiltersAndSort);
+  }
+  if (filterTag) {
+    filterTag.addEventListener('change', applyFiltersAndSort);
+  }
+  if (sortSelect) {
+    sortSelect.addEventListener('change', applyFiltersAndSort);
+  }
+  if (filterToggle && filterPanel) {
+    filterToggle.addEventListener('click', toggleFilterPanel);
+    document.addEventListener('click', (evt) => {
+      if (
+        filterPanel.hidden ||
+        filterPanel.contains(evt.target) ||
+        filterToggle.contains(evt.target)
+      ) {
+        return;
+      }
+      filterPanel.hidden = true;
+    });
+    filterPanel.addEventListener('change', (evt) => {
+      if (evt.target.matches('select')) {
+        applyFiltersAndSort();
+      }
+    });
+    filterPanel.addEventListener('input', (evt) => {
+      if (evt.target.matches('input')) {
+        applyFiltersAndSort();
+      }
+    });
+  }
   viewButtons.forEach((btn) => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
@@ -237,27 +280,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadBooks() {
     if (!currentUser) return;
-    const statusFilter = filterStatus.value;
-    let query = supabaseClient
+    const { data, error } = await supabaseClient
       .from('books')
       .select('*')
+      .order('sort_order', { ascending: true, nullsLast: true })
       .order('created_at', { ascending: false });
-
-    if (statusFilter !== 'all') {
-      query = query.eq('status', statusFilter);
-    }
-
-    const { data, error } = await query;
     if (error) {
       showToast('Konnte Bücher nicht laden.');
       return;
     }
 
     books = normalizeSortOrder(data || []);
-    renderBooks(books);
+    updateFilterOptions(books);
+    applyFiltersAndSort();
   }
 
-  function renderBooks(items) {
+  function renderBooks(items, allowDrag = true) {
     if (!items.length) {
       bookList.innerHTML = '<p class="muted">Noch keine Bücher. Lege los!</p>';
       return;
@@ -269,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
       card.className = 'book-card';
       card.tabIndex = 0;
       card.dataset.id = book.id;
-      card.draggable = true;
+      card.draggable = allowDrag;
 
       const inner = document.createElement('div');
       inner.className = 'book-card__inner';
@@ -301,7 +339,9 @@ document.addEventListener('DOMContentLoaded', () => {
       inner.appendChild(body);
       card.appendChild(inner);
 
-      attachDragEvents(card, book);
+      if (allowDrag) {
+        attachDragEvents(card, book);
+      }
 
       card.addEventListener('click', () => {
         if (dragState.isDragging) return;
@@ -376,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     next.splice(toIndex, 0, moved);
     assignSortOrder(next);
     books = next;
-    renderBooks(books);
+    applyFiltersAndSort();
     persistSortOrder(next);
   }
 
@@ -419,6 +459,129 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!books.length) return 1;
     const maxOrder = Math.max(...books.map((b) => b.sort_order || 0));
     return maxOrder + 1;
+  }
+
+  function applyFiltersAndSort(returnOnly = false) {
+    const statusFilter = filterStatus ? filterStatus.value : 'all';
+    const search = filterQuery ? filterQuery.value.trim().toLowerCase() : '';
+    const ratingVal = filterRating ? filterRating.value : 'any';
+    const authorVal = filterAuthor ? filterAuthor.value : 'any';
+    const tagVal = filterTag ? filterTag.value : 'any';
+    const allowDrag = shouldAllowDrag();
+
+    let filtered = [...books];
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((book) => book.status === statusFilter);
+    }
+    if (ratingVal !== 'any') {
+      const min = Number(ratingVal);
+      filtered = filtered.filter((book) => (book.rating || 0) >= min);
+    }
+    if (authorVal !== 'any') {
+      filtered = filtered.filter(
+        (book) => (book.author || '').trim().toLowerCase() === authorVal.toLowerCase()
+      );
+    }
+    if (tagVal !== 'any') {
+      filtered = filtered.filter((book) => {
+        const tags = (book.tags || '')
+          .split(',')
+          .map((tag) => tag.trim().toLowerCase())
+          .filter(Boolean);
+        return tags.includes(tagVal.toLowerCase());
+      });
+    }
+    if (search) {
+      filtered = filtered.filter((book) => {
+        const haystack = `${book.title || ''} ${book.author || ''} ${book.tags || ''}`.toLowerCase();
+        return haystack.includes(search);
+      });
+    }
+
+    const sorted = sortBooks(filtered);
+    if (returnOnly) return sorted;
+
+    renderBooks(sorted, allowDrag);
+    return sorted;
+  }
+
+  function sortBooks(list) {
+    const mode = sortSelect ? sortSelect.value : 'manual';
+    const sorted = [...list];
+    switch (mode) {
+      case 'title_asc':
+        sorted.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'de', { sensitivity: 'base' }));
+        break;
+      case 'rating_desc':
+        sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        break;
+      case 'date_desc':
+        sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        break;
+      case 'manual':
+      default:
+        sorted.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        break;
+    }
+    return sorted;
+  }
+
+  function shouldAllowDrag() {
+    const manual = sortSelect ? sortSelect.value === 'manual' : true;
+    const hasSearch = filterQuery ? !!filterQuery.value.trim() : false;
+    const hasRatingFilter = filterRating ? filterRating.value !== 'any' : false;
+    const hasAuthorFilter = filterAuthor ? filterAuthor.value !== 'any' : false;
+    const hasTagFilter = filterTag ? filterTag.value !== 'any' : false;
+    return manual && !hasSearch && !hasRatingFilter && !hasAuthorFilter && !hasTagFilter;
+  }
+
+  function toggleFilterPanel() {
+    if (!filterPanel) return;
+    filterPanel.hidden = !filterPanel.hidden;
+  }
+
+  function updateFilterOptions(list) {
+    const authors = Array.from(
+      new Set(
+        list
+          .map((b) => (b.author || '').trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' }));
+
+    const tagsSet = new Set();
+    list.forEach((b) => {
+      (b.tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .forEach((t) => tagsSet.add(t));
+    });
+    const tags = Array.from(tagsSet).sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' }));
+
+    populateSelect(filterAuthor, authors);
+    populateSelect(filterTag, tags);
+  }
+
+  function populateSelect(selectEl, values) {
+    if (!selectEl) return;
+    const current = selectEl.value;
+    selectEl.innerHTML = '';
+    const anyOpt = document.createElement('option');
+    anyOpt.value = 'any';
+    anyOpt.textContent = 'Alle';
+    selectEl.appendChild(anyOpt);
+    values.forEach((val) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      selectEl.appendChild(opt);
+    });
+    if (values.includes(current)) {
+      selectEl.value = current;
+    } else {
+      selectEl.value = 'any';
+    }
   }
 
   function startEdit(book) {

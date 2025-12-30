@@ -114,16 +114,55 @@
             <p class="eyebrow">Bibliothek</p>
             <h2>Deine Regalwand</h2>
           </div>
-          <div class="list-filter">
-            <label class="field">
-              <span>Status filtern</span>
-              <select id="filter-status">
-                <option value="all">Alle</option>
-                <option value="reading">Am Lesen</option>
-                <option value="finished">Gelesen</option>
-                <option value="wishlist">Merkliste</option>
-              </select>
-            </label>
+          <div class="filter-bar">
+            <button id="filter-toggle" class="ghost-btn">Filter & Sortierung</button>
+            <div id="filter-panel" class="filter-panel" hidden>
+              <div class="filter-panel__grid">
+                <label class="field">
+                  <span>Sortieren</span>
+                  <select id="sort-by">
+                    <option value="manual">Manuelle Reihenfolge</option>
+                    <option value="date_desc">Zuletzt hinzugefügt</option>
+                    <option value="title_asc">Titel A–Z</option>
+                    <option value="rating_desc">Bewertung hoch</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="filter-status">
+                    <option value="all">Alle</option>
+                    <option value="reading">Am Lesen</option>
+                    <option value="finished">Gelesen</option>
+                    <option value="wishlist">Merkliste</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Min. Bewertung</span>
+                  <select id="filter-rating">
+                    <option value="any">Beliebig</option>
+                    <option value="4">4+</option>
+                    <option value="3">3+</option>
+                    <option value="2">2+</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Autor:in</span>
+                  <select id="filter-author">
+                    <option value="any">Alle</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Tags</span>
+                  <select id="filter-tag">
+                    <option value="any">Alle</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Suche</span>
+                  <input type="search" id="filter-query" placeholder="Titel, Autor:in, Tags">
+                </label>
+              </div>
+            </div>
           </div>
         </div>
         <div class="shelf-wrap shelf-wrap--warm">
