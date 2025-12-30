@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const sortSelect = document.getElementById('sort-by');
   const filterToggle = document.getElementById('filter-toggle');
   const filterPanel = document.getElementById('filter-panel');
+  const backfillCoversBtn = document.getElementById('backfill-covers-btn');
   const authSubmitBtn = document.getElementById('auth-submit');
 
   const bookForm = document.getElementById('book-form');
@@ -46,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const tagsInput = document.getElementById('tags');
   const reviewInput = document.getElementById('review');
   const coverInput = document.getElementById('cover');
+  const coverPreview = document.getElementById('cover-preview');
+  const coverPreviewImg = document.getElementById('cover-preview-img');
   const bookSubmitBtn = document.getElementById('book-submit');
   const bookList = document.getElementById('book-list');
   const ambient = document.getElementById('ambient-light');
@@ -82,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let zxingControls = null;
   const ZXING_SRC = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js';
   let cameraPermissionDenied = false;
+  let fetchedCoverUrl = null;
 
   authForm.addEventListener('submit', handleAuthSubmit);
   logoutBtn.addEventListener('click', handleLogout);
@@ -154,6 +158,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', closeModal);
+  }
+  if (backfillCoversBtn) {
+    backfillCoversBtn.addEventListener('click', backfillMissingCovers);
+  }
+  if (coverInput) {
+    coverInput.addEventListener('change', () => {
+      if (coverInput.files && coverInput.files.length) {
+        fetchedCoverUrl = null;
+        updateCoverPreview(null);
+      }
+    });
   }
   document.addEventListener('keydown', (evt) => {
     if (evt.key === 'Escape') {
@@ -279,6 +294,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (coverUrl) {
       payload.cover_url = coverUrl;
+    } else if (fetchedCoverUrl) {
+      payload.cover_url = fetchedCoverUrl;
     }
 
     let error = null;
@@ -862,6 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
       summary: '',
       tags: '',
       review: '',
+      cover_url: pickCoverUrl(info),
       user_id: currentUser.id,
       sort_order: getNextSortOrder()
     };
@@ -914,6 +932,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (info.authors && info.authors.length && !authorInput.value.trim()) {
         authorInput.value = info.authors.join(', ');
+      }
+      const coverUrl = pickCoverUrl(info);
+      if (coverUrl) {
+        fetchedCoverUrl = coverUrl;
+        updateCoverPreview(coverUrl);
       }
       if (opts.showErrors) showToast('Titel/Autor ausgefüllt (falls leer).');
       if (opts.returnInfo) return info;
@@ -989,6 +1012,8 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryInput.value = book.summary || '';
     tagsInput.value = book.tags || '';
     reviewInput.value = book.review || '';
+    fetchedCoverUrl = book.cover_url || null;
+    updateCoverPreview(fetchedCoverUrl);
     switchView('form');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -997,6 +1022,8 @@ document.addEventListener('DOMContentLoaded', () => {
     editingId = null;
     formTitle.textContent = 'Neuer Eintrag';
     bookForm.reset();
+    fetchedCoverUrl = null;
+    updateCoverPreview(null);
   }
 
   async function deleteBook(id) {
@@ -1030,6 +1057,78 @@ document.addEventListener('DOMContentLoaded', () => {
     toastTimer = setTimeout(function () {
       toastEl.classList.remove('toast--show');
     }, 3200);
+  }
+
+  async function backfillMissingCovers() {
+    if (!currentUser) {
+      showToast('Bitte zuerst anmelden.');
+      return;
+    }
+    if (!books.length) {
+      showToast('Keine Bücher vorhanden.');
+      return;
+    }
+    const targets = books.filter((b) => !b.cover_url && b.isbn);
+    if (!targets.length) {
+      showToast('Keine fehlenden Cover gefunden.');
+      return;
+    }
+    if (backfillCoversBtn) {
+      backfillCoversBtn.disabled = true;
+      backfillCoversBtn.textContent = 'Lädt...';
+    }
+    let updated = 0;
+    for (const book of targets) {
+      const info = await fetchGoogleInfoByIsbn(book.isbn);
+      const coverUrl = pickCoverUrl(info);
+      if (!coverUrl) continue;
+      const { error } = await supabaseClient.from('books').update({ cover_url: coverUrl }).eq('id', book.id);
+      if (!error) {
+        updated += 1;
+      }
+    }
+    if (backfillCoversBtn) {
+      backfillCoversBtn.disabled = false;
+      backfillCoversBtn.textContent = 'Cover nachladen';
+    }
+    if (updated) {
+      showToast(`${updated} Cover ergänzt.`);
+      loadBooks();
+    } else {
+      showToast('Keine Cover gefunden.');
+    }
+  }
+
+  function updateCoverPreview(url) {
+    if (!coverPreview || !coverPreviewImg) return;
+    if (url) {
+      coverPreview.hidden = false;
+      coverPreviewImg.src = url;
+    } else {
+      coverPreview.hidden = true;
+      coverPreviewImg.src = '';
+    }
+  }
+
+  function pickCoverUrl(info) {
+    if (!info || !info.imageLinks) return null;
+    const links = info.imageLinks;
+    const candidate = links.thumbnail || links.smallThumbnail || links.medium || links.large;
+    if (!candidate) return null;
+    return candidate.replace(/^http:\/\//i, 'https://');
+  }
+
+  async function fetchGoogleInfoByIsbn(isbn) {
+    if (!isbn) return null;
+    try {
+      const resp = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const volume = data.items && data.items[0];
+      return volume ? volume.volumeInfo : null;
+    } catch (_err) {
+      return null;
+    }
   }
 
   function switchView(view) {

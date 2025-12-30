@@ -111,6 +111,10 @@
           <label class="field field--wide">
             <span>Cover hochladen (JPG/PNG)</span>
             <input type="file" id="cover" accept="image/*">
+            <div id="cover-preview" class="cover-preview" hidden>
+              <img id="cover-preview-img" alt="Gefundenes Cover" class="cover-preview__img">
+              <p class="muted">Automatisch aus Google Books übernommen. Du kannst ein eigenes hochladen.</p>
+            </div>
           </label>
           <button type="submit" class="primary-btn" id="book-submit">Speichern</button>
           <p class="hint">Covers landen im Supabase Storage, der Link wird beim Buch gespeichert.</p>
@@ -125,6 +129,7 @@
           </div>
           <div class="filter-bar">
             <button id="filter-toggle" class="ghost-btn">Filter & Sortierung</button>
+            <button id="backfill-covers-btn" class="ghost-btn ghost-btn--small">Cover nachladen</button>
             <div id="filter-panel" class="filter-panel" hidden>
               <div class="filter-panel__grid">
                 <label class="field">

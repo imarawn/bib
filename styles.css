@@ -431,6 +431,22 @@ body {
   font-size: 13px;
 }
 
+.cover-preview {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cover-preview__img {
+  width: 90px;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  background: #f4f1ea;
+  object-fit: cover;
+}
+
 .checkbox {
   display: inline-flex;
   align-items: center;
@@ -827,6 +843,10 @@ body {
   border-radius: 16px;
   padding: 16px 16px 20px;
   width: min(560px, 92vw);
+   max-height: 90vh;
+   overflow: hidden;
+   display: flex;
+   flex-direction: column;
   box-shadow: var(--shadow), 0 0 0 1px rgba(215, 162, 95, 0.15);
   transform: translateY(12px) scale(0.98);
   opacity: 0;
@@ -849,16 +869,24 @@ body {
 .modal__card {
   margin-top: 10px;
   perspective: 1400px;
+  overflow-y: auto;
+  max-height: calc(90vh - 70px);
 }
 
 .modal__inner {
   width: 100%;
   display: grid;
+  grid-template-columns: minmax(160px, 1fr) 2fr;
   gap: 14px;
+  align-items: start;
 }
 
 .modal__cover-block {
   position: relative;
+  max-width: 240px;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  justify-self: center;
 }
 
 .modal__body {
@@ -869,6 +897,28 @@ body {
 .back-header {
   display: grid;
   gap: 6px;
+}
+
+.modal__cover-block .cover {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+@media (max-width: 720px) {
+  .modal__dialog {
+    width: min(96vw, 520px);
+    max-height: 92vh;
+  }
+  .modal__card {
+    max-height: calc(92vh - 70px);
+  }
+  .modal__inner {
+    grid-template-columns: 1fr;
+  }
+  .modal__cover-block {
+    max-width: 220px;
+  }
 }
 
 @media (max-width: 900px) {
